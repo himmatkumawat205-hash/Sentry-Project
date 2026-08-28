@@ -6,7 +6,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 // Store shared content
 const codes = new Map();
@@ -84,7 +84,6 @@ setInterval(() => {
 
 }, 60 * 1000);
 
-server.listen(PORT, () => {
-    console.log(`QuickCode running at http://localhost:${PORT}`);
+server.listen(PORT, "0.0.0.0", () => {
+    console.log(`QuickCode running on port ${PORT}`);
 });
-
