@@ -1,0 +1,13 @@
+{
+    "name": "quickcode",
+    "version": "1.0.0",
+    "description": "Public real-time code sharing website",
+    "main": "server.js",
+    "scripts": {
+        "start": "node server.js"
+    },
+    "dependencies": {
+        "express": "^5.0.0",
+        "socket.io": "^4.0.0"
+    }
+}

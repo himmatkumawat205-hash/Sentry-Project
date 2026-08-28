@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>QuickCode - Share Instantly</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <div class="container">
+
+        <h1>QuickCode</h1>
+
+        <p class="subtitle">
+            Share code instantly using a simple generated code.
+        </p>
+
+
+        <div class="cards">
+
+            <!-- Sender -->
+
+            <div class="card">
+
+                <h2>Send Content</h2>
+
+                <textarea id="contentInput" placeholder="Type or paste your code here...">
+                </textarea>
+
+                <button id="generateBtn">
+                    Generate Code
+                </button>
+
+                <div id="generatedSection" class="generated hidden">
+
+                    <p>Your Generated Code</p>
+
+                    <div class="code-box">
+
+                        <span id="generatedCode">
+                            --------
+                        </span>
+
+                        <button id="copyBtn">
+                            Copy
+                        </button>
+
+                    </div>
+
+                    <p class="small">
+                        Share this code with the receiver.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <!-- Receiver -->
+
+            <div class="card">
+
+                <h2>Receive Content</h2>
+
+                <input type="text" id="codeInput" placeholder="Enter generated code">
+
+                <button id="accessBtn">
+                    Access Code
+                </button>
+
+                <div id="resultSection" class="result hidden">
+
+                    <h3>Received Content</h3>
+
+                    <pre id="receivedContent"></pre>
+
+                    <button id="copyReceivedBtn">
+                        Copy Content
+                    </button>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <p id="message"></p>
+
+    </div>
+
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="script.js"></script>
+
+</body>
+
+</html>
