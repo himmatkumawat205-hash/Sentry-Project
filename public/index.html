@@ -3,97 +3,207 @@
 
 <head>
     <meta charset="UTF-8">
-
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>QuickCode - Share Instantly</title>
+    <title>QuickCode — Share Instantly</title>
+
+    <meta name="description"
+        content="QuickCode lets you share text and code instantly using a simple 6-character code.">
 
     <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
 
-    <div class="container">
+    <header class="header">
+        <div class="brand">
+            <div class="logo">Q</div>
 
-        <h1>QuickCode</h1>
+            <div>
+                <h1>QuickCode</h1>
+                <p>Share instantly</p>
+            </div>
+        </div>
 
-        <p class="subtitle">
-            Share code instantly using a simple generated code.
-        </p>
+        <div class="status">
+            <span class="status-dot"></span>
+            Online
+        </div>
+    </header>
 
 
-        <div class="cards">
+    <main class="container">
 
-            <!-- Sender -->
+        <section class="hero">
+            <span class="badge">FAST • SIMPLE • PUBLIC</span>
+
+            <h2>Share anything with a code.</h2>
+
+            <p>
+                Enter your content, generate a 6-character code,
+                and share it with anyone.
+            </p>
+        </section>
+
+
+        <section class="cards">
+
+            <!-- SEND -->
 
             <div class="card">
 
-                <h2>Send Content</h2>
+                <div class="card-header">
 
-                <textarea id="contentInput" placeholder="Type or paste your code here...">
-                </textarea>
+                    <div class="number">01</div>
 
-                <button id="generateBtn">
+                    <div>
+                        <h3>Send Content</h3>
+                        <p>Create a code to share your content.</p>
+                    </div>
+
+                </div>
+
+
+                <label for="contentInput">
+                    Your content
+                </label>
+
+                <textarea id="contentInput" placeholder="Type or paste your text or code here..."
+                    spellcheck="false"></textarea>
+
+
+                <button id="generateBtn" class="primary-btn">
                     Generate Code
                 </button>
 
+
                 <div id="generatedSection" class="generated hidden">
 
-                    <p>Your Generated Code</p>
+                    <div class="divider"></div>
 
-                    <div class="code-box">
+                    <label>Your access code</label>
+
+                    <div class="code-container">
 
                         <span id="generatedCode">
-                            --------
+                            ------
                         </span>
 
-                        <button id="copyBtn">
+                        <button id="copyBtn" class="copy-btn">
                             Copy
                         </button>
 
                     </div>
 
-                    <p class="small">
-                        Share this code with the receiver.
+                    <p class="helper">
+                        Share this 6-character code with anyone.
                     </p>
 
-                </div>
-
-            </div>
-
-
-            <!-- Receiver -->
-
-            <div class="card">
-
-                <h2>Receive Content</h2>
-
-                <input type="text" id="codeInput" placeholder="Enter generated code">
-
-                <button id="accessBtn">
-                    Access Code
-                </button>
-
-                <div id="resultSection" class="result hidden">
-
-                    <h3>Received Content</h3>
-
-                    <pre id="receivedContent"></pre>
-
-                    <button id="copyReceivedBtn">
-                        Copy Content
+                    <button id="shareBtn" class="secondary-btn">
+                        Share Code
                     </button>
 
                 </div>
 
             </div>
 
+
+            <!-- RECEIVE -->
+
+            <div class="card">
+
+                <div class="card-header">
+
+                    <div class="number">02</div>
+
+                    <div>
+                        <h3>Receive Content</h3>
+                        <p>Enter a code to access shared content.</p>
+                    </div>
+
+                </div>
+
+
+                <label for="codeInput">
+                    Access code
+                </label>
+
+                <input type="text" id="codeInput" placeholder="Enter 6-character code" maxlength="6" autocomplete="off"
+                    spellcheck="false">
+
+
+                <button id="accessBtn" class="primary-btn">
+                    Access Content
+                </button>
+
+
+                <div id="resultSection" class="result hidden">
+
+                    <div class="divider"></div>
+
+                    <label>Received content</label>
+
+                    <pre id="receivedContent"></pre>
+
+                    <div class="result-buttons">
+
+                        <button id="copyReceivedBtn" class="secondary-btn">
+                            Copy Content
+                        </button>
+
+                        <button id="clearResultBtn" class="clear-btn">
+                            Clear
+                        </button>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <div id="message" class="message hidden">
         </div>
 
 
-        <p id="message"></p>
+        <section class="how-it-works">
 
-    </div>
+            <h3>How QuickCode works</h3>
+
+            <div class="steps">
+
+                <div>
+                    <strong>1</strong>
+                    <span>Enter content</span>
+                </div>
+
+                <div>
+                    <strong>2</strong>
+                    <span>Generate a code</span>
+                </div>
+
+                <div>
+                    <strong>3</strong>
+                    <span>Share the code</span>
+                </div>
+
+                <div>
+                    <strong>4</strong>
+                    <span>Access anywhere</span>
+                </div>
+
+            </div>
+
+        </section>
+
+    </main>
+
+
+    <footer>
+        <p>QuickCode • Simple content sharing</p>
+    </footer>
 
 
     <script src="/socket.io/socket.io.js"></script>
