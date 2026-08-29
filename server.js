@@ -14,7 +14,10 @@ if (!MONGO_URI) {
     throw new Error("MONGO_URI environment variable is missing.");
 }
 
-const client = new MongoClient(MONGO_URI);
+
+const client = new MongoClient(MONGO_URI, {
+    family: 4
+});
 
 // Generate a 6-character alphanumeric code
 function generateCode(length = 6) {
