@@ -1,17 +1,22 @@
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
+const { MongoClient } = require("mongodb");
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
 const PORT = process.env.PORT || 3000;
+const MONGO_URI = process.env.MONGO_URI;
 
-// Store shared content
-const codes = new Map();
+if (!MONGO_URI) {
+    throw new Error("MONGO_URI environment variable is missing.");
+}
 
-// Generate 6-character alphanumeric code
+const client = new MongoClient(MONGO_URI);
+
+// Generate a 6-character alphanumeric code
 function generateCode(length = 6) {
     const characters =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -30,130 +35,104 @@ function generateCode(length = 6) {
 // Serve website files
 app.use(express.static("public"));
 
+async function startServer() {
+    await client.connect();
 
-// Socket.IO connection
-io.on("connection", (socket) => {
+    const codes = client.db("quickcode").collection("codes");
 
-    // Basic rate protection
-    let requestCount = 0;
+    // Prevent duplicate codes, including when people create codes at the same time
+    await codes.createIndex({ code: 1 }, { unique: true });
 
-    const rateTimer = setInterval(() => {
-        requestCount = 0;
-    }, 60000);
+    io.on("connection", (socket) => {
+        let requestCount = 0;
 
+        const rateTimer = setInterval(() => {
+            requestCount = 0;
+        }, 60000);
 
-    // =========================
-    // CREATE CODE
-    // =========================
+        socket.on("createCode", async (content) => {
+            if (requestCount >= 30) {
+                socket.emit("errorMessage", "Too many requests. Please wait.");
+                return;
+            }
 
-    socket.on("createCode", (content) => {
+            requestCount++;
 
-        // Rate protection
-        if (requestCount >= 30) {
-            socket.emit(
-                "errorMessage",
-                "Too many requests. Please wait."
-            );
-            return;
-        }
+            if (typeof content !== "string" || content.trim() === "") {
+                socket.emit("errorMessage", "Please enter some content.");
+                return;
+            }
 
-        requestCount++;
+            try {
+                let code;
 
+                // Keep trying if a randomly generated code already exists
+                while (true) {
+                    code = generateCode(6);
 
-        // Check empty content
-        if (!content || content.trim() === "") {
-            socket.emit(
-                "errorMessage",
-                "Please enter some content."
-            );
-            return;
-        }
+                    try {
+                        await codes.insertOne({ code, content });
+                        break;
+                    } catch (error) {
+                        if (error.code !== 11000) {
+                            throw error;
+                        }
+                    }
+                }
 
-
-        // Generate unique 6-character code
-        let code;
-
-        do {
-            code = generateCode(6);
-        } while (codes.has(code));
-
-
-        // Store content
-        codes.set(code, {
-            content: content
+                socket.emit("codeCreated", code);
+            } catch (error) {
+                console.error("Could not create code:", error);
+                socket.emit(
+                    "errorMessage",
+                    "Could not save your content. Please try again."
+                );
+            }
         });
 
+        socket.on("accessCode", async (code) => {
+            if (requestCount >= 30) {
+                socket.emit("errorMessage", "Too many requests. Please wait.");
+                return;
+            }
 
-        // Send generated code to sender
-        socket.emit("codeCreated", code);
+            requestCount++;
 
+            if (typeof code !== "string") {
+                socket.emit("errorMessage", "Code not found.");
+                return;
+            }
+
+            try {
+                const data = await codes.findOne({ code: code.trim() });
+
+                if (!data) {
+                    socket.emit("errorMessage", "Code not found.");
+                    return;
+                }
+
+                // The code is intentionally not deleted and never expires.
+                socket.emit("contentReceived", data.content);
+            } catch (error) {
+                console.error("Could not access code:", error);
+                socket.emit(
+                    "errorMessage",
+                    "Could not retrieve content. Please try again."
+                );
+            }
+        });
+
+        socket.on("disconnect", () => {
+            clearInterval(rateTimer);
+        });
     });
 
-
-    // =========================
-    // ACCESS CODE
-    // =========================
-
-    socket.on("accessCode", (code) => {
-
-        // Rate protection
-        if (requestCount >= 30) {
-            socket.emit(
-                "errorMessage",
-                "Too many requests. Please wait."
-            );
-            return;
-        }
-
-        requestCount++;
-
-
-        // Clean input
-        code = code.trim();
-
-
-        // Check code
-        if (!codes.has(code)) {
-            socket.emit(
-                "errorMessage",
-                "Code not found."
-            );
-            return;
-        }
-
-
-        // Get stored content
-        const data = codes.get(code);
-
-
-        // Send content to receiver
-        socket.emit(
-            "contentReceived",
-            data.content
-        );
-
-        // IMPORTANT:
-        // Code is NOT deleted.
-        // Multiple people can use the same code.
-
+    server.listen(PORT, "0.0.0.0", () => {
+        console.log(`QuickCode running on port ${PORT}`);
     });
+}
 
-
-    // =========================
-    // DISCONNECT
-    // =========================
-
-    socket.on("disconnect", () => {
-        clearInterval(rateTimer);
-    });
-
-});
-
-
-// =========================
-// START SERVER
-// =========================
-
-server.listen(PORT, "0.0.0.0", () => {
-    console.log(`QuickCode running on port ${PORT}`);
+startServer().catch((error) => {
+    console.error("MongoDB connection failed:", error);
+    process.exit(1);
 });
