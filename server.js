@@ -1,32 +1,62 @@
 const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
-const { MongoClient } = require("mongodb");
+const mongoose = require("mongoose");
+const path = require("path");
 
 const app = express();
-const server = http.createServer(app);
-const io = new Server(server);
-
 const PORT = process.env.PORT || 3000;
+
+// Middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, "public")));
+
+// MongoDB connection
 const MONGO_URI = process.env.MONGO_URI;
 
 if (!MONGO_URI) {
-    throw new Error("MONGO_URI environment variable is missing.");
+    console.error("ERROR: MONGO_URI environment variable is missing.");
+    process.exit(1);
 }
 
+mongoose
+    .connect(MONGO_URI)
+    .then(() => {
+        console.log("Connected to MongoDB");
+    })
+    .catch((error) => {
+        console.error("MongoDB connection error:", error);
+        process.exit(1);
+    });
 
-const client = new MongoClient(MONGO_URI, {
-    family: 4
-});
+// QuickCode Schema
+const quickCodeSchema = new mongoose.Schema(
+    {
+        code: {
+            type: String,
+            required: true,
+            unique: true,
+            index: true,
+        },
+        content: {
+            type: String,
+            required: true,
+        },
+    },
+    {
+        timestamps: true,
+    }
+);
 
-// Generate a 6-character alphanumeric code
-function generateCode(length = 6) {
+const QuickCode = mongoose.model("QuickCode", quickCodeSchema);
+
+// Generate 6-character alphanumeric code
+function generateCode() {
     const characters =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
     let code = "";
 
-    for (let i = 0; i < length; i++) {
+    for (let i = 0; i < 6; i++) {
         code += characters.charAt(
             Math.floor(Math.random() * characters.length)
         );
@@ -35,107 +65,84 @@ function generateCode(length = 6) {
     return code;
 }
 
-// Serve website files
-app.use(express.static("public"));
+// Create a new QuickCode
+app.post("/api/create", async (req, res) => {
+    try {
+        const { content } = req.body;
 
-async function startServer() {
-    await client.connect();
+        if (!content || !content.trim()) {
+            return res.status(400).json({
+                success: false,
+                message: "Please enter some content.",
+            });
+        }
 
-    const codes = client.db("quickcode").collection("codes");
+        let code;
+        let existingCode;
 
-    // Prevent duplicate codes, including when people create codes at the same time
-    await codes.createIndex({ code: 1 }, { unique: true });
+        // Make sure generated code is unique
+        do {
+            code = generateCode();
+            existingCode = await QuickCode.findOne({ code });
+        } while (existingCode);
 
-    io.on("connection", (socket) => {
-        let requestCount = 0;
-
-        const rateTimer = setInterval(() => {
-            requestCount = 0;
-        }, 60000);
-
-        socket.on("createCode", async (content) => {
-            if (requestCount >= 30) {
-                socket.emit("errorMessage", "Too many requests. Please wait.");
-                return;
-            }
-
-            requestCount++;
-
-            if (typeof content !== "string" || content.trim() === "") {
-                socket.emit("errorMessage", "Please enter some content.");
-                return;
-            }
-
-            try {
-                let code;
-
-                // Keep trying if a randomly generated code already exists
-                while (true) {
-                    code = generateCode(6);
-
-                    try {
-                        await codes.insertOne({ code, content });
-                        break;
-                    } catch (error) {
-                        if (error.code !== 11000) {
-                            throw error;
-                        }
-                    }
-                }
-
-                socket.emit("codeCreated", code);
-            } catch (error) {
-                console.error("Could not create code:", error);
-                socket.emit(
-                    "errorMessage",
-                    "Could not save your content. Please try again."
-                );
-            }
+        const quickCode = new QuickCode({
+            code,
+            content,
         });
 
-        socket.on("accessCode", async (code) => {
-            if (requestCount >= 30) {
-                socket.emit("errorMessage", "Too many requests. Please wait.");
-                return;
-            }
+        await quickCode.save();
 
-            requestCount++;
-
-            if (typeof code !== "string") {
-                socket.emit("errorMessage", "Code not found.");
-                return;
-            }
-
-            try {
-                const data = await codes.findOne({ code: code.trim() });
-
-                if (!data) {
-                    socket.emit("errorMessage", "Code not found.");
-                    return;
-                }
-
-                // The code is intentionally not deleted and never expires.
-                socket.emit("contentReceived", data.content);
-            } catch (error) {
-                console.error("Could not access code:", error);
-                socket.emit(
-                    "errorMessage",
-                    "Could not retrieve content. Please try again."
-                );
-            }
+        res.json({
+            success: true,
+            code,
         });
+    } catch (error) {
+        console.error("Create error:", error);
 
-        socket.on("disconnect", () => {
-            clearInterval(rateTimer);
+        res.status(500).json({
+            success: false,
+            message: "Unable to create QuickCode.",
         });
-    });
+    }
+});
 
-    server.listen(PORT, "0.0.0.0", () => {
-        console.log(`QuickCode running on port ${PORT}`);
-    });
-}
+// Receive content using code
+app.get("/api/code/:code", async (req, res) => {
+    try {
+        const code = req.params.code;
 
-startServer().catch((error) => {
-    console.error("MongoDB connection failed:", error);
-    process.exit(1);
+        const quickCode = await QuickCode.findOne({ code });
+
+        if (!quickCode) {
+            return res.status(404).json({
+                success: false,
+                message: "Code not found.",
+            });
+        }
+
+        // Content is NOT deleted after access
+        res.json({
+            success: true,
+            code: quickCode.code,
+            content: quickCode.content,
+        });
+    } catch (error) {
+        console.error("Receive error:", error);
+
+        res.status(500).json({
+            success: false,
+            message: "Unable to retrieve content.",
+        });
+    }
+});
+
+// Main page
+app.get("/", (req, res) => {
+    res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
+// Start server
+app.listen(PORT, "0.0.0.0", () => {
+    console.log(`QuickCode running on port ${PORT}`);
 });
