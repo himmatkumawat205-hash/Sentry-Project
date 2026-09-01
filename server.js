@@ -1,32 +1,62 @@
+
+require("dotenv").config();
+
+const http = require("http");
+const { Server } = require("socket.io");
+
+const dns = require("dns");
+
+dns.setServers(["8.8.8.8", "1.1.1.1"]);
+
 const express = require("express");
 const mongoose = require("mongoose");
 const path = require("path");
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+    cors: {
+        origin: "*", // tighten this to your actual frontend URL in production
+        methods: ["GET", "POST"]
+    }
+});
+
+io.on("connection", (socket) => {
+    console.log("A user connected:", socket.id);
+
+    socket.on("disconnect", () => {
+        console.log("User disconnected:", socket.id);
+    });
+});
 const PORT = process.env.PORT || 3000;
 
 // Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "100kb" }));
+app.use(express.urlencoded({ extended: true, limit: "100kb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
-// MongoDB connection
-const MONGO_URI = process.env.MONGO_URI;
+const MONGO_URI = process.env.MONGO_URI?.trim();
 
 if (!MONGO_URI) {
     console.error("ERROR: MONGO_URI environment variable is missing.");
     process.exit(1);
 }
 
-mongoose
-    .connect(MONGO_URI)
-    .then(() => {
-        console.log("Connected to MongoDB");
-    })
-    .catch((error) => {
-        console.error("MongoDB connection error:", error);
-        process.exit(1);
-    });
+try {
+    const parsedMongoUri = new URL(MONGO_URI);
+
+    if (
+        !["mongodb:", "mongodb+srv:"].includes(parsedMongoUri.protocol) ||
+        !parsedMongoUri.hostname
+    ) {
+        throw new Error("Invalid MongoDB URI");
+    }
+} catch {
+    console.error(
+        "ERROR: MONGO_URI must be a complete MongoDB connection string, starting with mongodb:// or mongodb+srv://."
+    );
+    process.exit(1);
+}
 
 // QuickCode Schema
 const quickCodeSchema = new mongoose.Schema(
@@ -70,32 +100,31 @@ app.post("/api/create", async (req, res) => {
     try {
         const { content } = req.body;
 
-        if (!content || !content.trim()) {
+        if (typeof content !== "string" || !content.trim()) {
             return res.status(400).json({
                 success: false,
                 message: "Please enter some content.",
             });
         }
 
-        let code;
-        let existingCode;
+        // The unique index is the source of truth. Retrying on a duplicate-key
+        // error keeps simultaneous requests from ever receiving the same code.
+        for (let attempt = 0; attempt < 10; attempt += 1) {
+            const code = generateCode();
 
-        // Make sure generated code is unique
-        do {
-            code = generateCode();
-            existingCode = await QuickCode.findOne({ code });
-        } while (existingCode);
+            try {
+                await QuickCode.create({ code, content });
+                return res.status(201).json({ success: true, code });
+            } catch (error) {
+                if (error?.code !== 11000) {
+                    throw error;
+                }
+            }
+        }
 
-        const quickCode = new QuickCode({
-            code,
-            content,
-        });
-
-        await quickCode.save();
-
-        res.json({
-            success: true,
-            code,
+        return res.status(503).json({
+            success: false,
+            message: "Unable to generate a unique code. Please try again.",
         });
     } catch (error) {
         console.error("Create error:", error);
@@ -110,7 +139,14 @@ app.post("/api/create", async (req, res) => {
 // Receive content using code
 app.get("/api/code/:code", async (req, res) => {
     try {
-        const code = req.params.code;
+        const code = req.params.code?.trim();
+
+        if (!/^[A-Za-z0-9]{6}$/.test(code)) {
+            return res.status(400).json({
+                success: false,
+                message: "Please provide a valid 6-character code.",
+            });
+        }
 
         const quickCode = await QuickCode.findOne({ code });
 
@@ -142,8 +178,36 @@ app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-// Start server
-app.listen(PORT, "0.0.0.0", () => {
-    console.log(`QuickCode running on port ${PORT}`);
+app.use((error, req, res, next) => {
+    if (error?.type === "entity.too.large") {
+        return res.status(413).json({
+            success: false,
+            message: "Content is too large. Please keep it under 100 KB.",
+        });
+    }
 
+    if (error instanceof SyntaxError && "body" in error) {
+        return res.status(400).json({
+            success: false,
+            message: "Request body must be valid JSON.",
+        });
+    }
+
+    next(error);
 });
+
+async function startServer() {
+    try {
+        await mongoose.connect(MONGO_URI);
+        console.log("Connected to MongoDB");
+
+        server.listen(PORT, "0.0.0.0", () => {
+            console.log(`QuickCode running on port ${PORT}`);
+        });
+    } catch (error) {
+        console.error("MongoDB connection error:", error);
+        process.exitCode = 1;
+    }
+}
+
+startServer();

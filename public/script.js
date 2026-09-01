@@ -1,48 +1,27 @@
-const socket = io();
-
-
 // =========================
 // ELEMENTS
 // =========================
 
-const contentInput =
-    document.getElementById("contentInput");
+const contentInput = document.getElementById("contentInput");
+const generateBtn = document.getElementById("generateBtn");
 
-const generateBtn =
-    document.getElementById("generateBtn");
+const generatedSection = document.getElementById("generatedSection");
+const generatedCode = document.getElementById("generatedCode");
 
-const generatedSection =
-    document.getElementById("generatedSection");
+const copyBtn = document.getElementById("copyBtn");
+const shareBtn = document.getElementById("shareBtn");
 
-const generatedCode =
-    document.getElementById("generatedCode");
+const codeInput = document.getElementById("codeInput");
+const accessBtn = document.getElementById("accessBtn");
 
-const copyBtn =
-    document.getElementById("copyBtn");
+const resultSection = document.getElementById("resultSection");
+const receivedContent = document.getElementById("receivedContent");
 
-const shareBtn =
-    document.getElementById("shareBtn");
+const copyReceivedBtn = document.getElementById("copyReceivedBtn");
+const clearResultBtn = document.getElementById("clearResultBtn");
 
-const codeInput =
-    document.getElementById("codeInput");
-
-const accessBtn =
-    document.getElementById("accessBtn");
-
-const resultSection =
-    document.getElementById("resultSection");
-
-const receivedContent =
-    document.getElementById("receivedContent");
-
-const copyReceivedBtn =
-    document.getElementById("copyReceivedBtn");
-
-const clearResultBtn =
-    document.getElementById("clearResultBtn");
-
-const message =
-    document.getElementById("message");
+const message = document.getElementById("message");
+let messageTimeout;
 
 
 // =========================
@@ -50,16 +29,24 @@ const message =
 // =========================
 
 function showMessage(text, type = "success") {
-
+    clearTimeout(messageTimeout);
     message.textContent = text;
 
-    message.className =
-        `message ${type}`;
+    message.className = `message ${type}`;
 
-    setTimeout(() => {
-        message.className =
-            "message hidden";
+    messageTimeout = setTimeout(() => {
+        message.className = "message hidden";
     }, 4000);
+}
+
+async function getResponseData(response) {
+    const contentType = response.headers.get("content-type") || "";
+
+    if (contentType.includes("application/json")) {
+        return response.json();
+    }
+
+    return {};
 }
 
 
@@ -67,54 +54,70 @@ function showMessage(text, type = "success") {
 // GENERATE CODE
 // =========================
 
-generateBtn.addEventListener("click", () => {
+generateBtn.addEventListener("click", async () => {
 
-    const content =
-        contentInput.value;
+    const content = contentInput.value;
 
     if (!content.trim()) {
-
         showMessage(
             "Please enter some content first.",
             "error"
         );
 
         contentInput.focus();
-
         return;
     }
 
     generateBtn.disabled = true;
     generateBtn.textContent = "Generating...";
 
-    socket.emit(
-        "createCode",
-        content
-    );
-});
+    try {
 
+        const response = await fetch("/api/create", {
+            method: "POST",
 
-// =========================
-// CODE CREATED
-// =========================
+            headers: {
+                "Content-Type": "application/json"
+            },
 
-socket.on("codeCreated", (code) => {
+            body: JSON.stringify({
+                content: content
+            })
+        });
 
-    generatedCode.textContent =
-        code;
+        const data = await getResponseData(response);
 
-    generatedSection.classList.remove(
-        "hidden"
-    );
+        if (!response.ok || !data.success) {
+            throw new Error(
+                data.message || "Unable to generate code."
+            );
+        }
 
-    generateBtn.disabled = false;
-    generateBtn.textContent =
-        "Generate New Code";
+        // Show generated code
+        generatedCode.textContent = data.code;
 
-    showMessage(
-        "Your code was generated successfully.",
-        "success"
-    );
+        generatedSection.classList.remove("hidden");
+
+        generateBtn.textContent = "Generate New Code";
+        generateBtn.disabled = false;
+
+        showMessage(
+            "Your code was generated successfully.",
+            "success"
+        );
+
+    } catch (error) {
+
+        console.error("Generate error:", error);
+
+        generateBtn.textContent = "Generate Code";
+        generateBtn.disabled = false;
+
+        showMessage(
+            error.message || "Something went wrong.",
+            "error"
+        );
+    }
 });
 
 
@@ -124,22 +127,21 @@ socket.on("codeCreated", (code) => {
 
 copyBtn.addEventListener("click", async () => {
 
-    const code =
-        generatedCode.textContent;
+    const code = generatedCode.textContent;
 
     try {
 
         await navigator.clipboard.writeText(code);
 
-        copyBtn.textContent =
-            "Copied!";
+        copyBtn.textContent = "Copied!";
 
         setTimeout(() => {
-            copyBtn.textContent =
-                "Copy";
+            copyBtn.textContent = "Copy";
         }, 1500);
 
-    } catch {
+    } catch (error) {
+
+        console.error("Copy error:", error);
 
         showMessage(
             "Unable to copy the code.",
@@ -155,8 +157,7 @@ copyBtn.addEventListener("click", async () => {
 
 shareBtn.addEventListener("click", async () => {
 
-    const code =
-        generatedCode.textContent;
+    const code = generatedCode.textContent;
 
     const shareText =
         `QuickCode access code: ${code}`;
@@ -170,8 +171,11 @@ shareBtn.addEventListener("click", async () => {
                 text: shareText
             });
 
-        } catch {
+        } catch (error) {
+
             // User cancelled sharing
+            console.log("Share cancelled.");
+
         }
 
     } else {
@@ -187,10 +191,10 @@ shareBtn.addEventListener("click", async () => {
                 "success"
             );
 
-        } catch {
+        } catch (error) {
 
             showMessage(
-                "Unable to share code.",
+                "Unable to share the code.",
                 "error"
             );
         }
@@ -202,10 +206,9 @@ shareBtn.addEventListener("click", async () => {
 // ACCESS CODE
 // =========================
 
-accessBtn.addEventListener("click", () => {
+accessBtn.addEventListener("click", async () => {
 
-    const code =
-        codeInput.value.trim();
+    const code = codeInput.value.trim();
 
     if (!code) {
 
@@ -219,42 +222,74 @@ accessBtn.addEventListener("click", () => {
         return;
     }
 
+    if (code.length !== 6) {
+
+        showMessage(
+            "Please enter a 6-character code.",
+            "error"
+        );
+
+        codeInput.focus();
+
+        return;
+    }
+
     accessBtn.disabled = true;
     accessBtn.textContent = "Checking...";
 
-    socket.emit(
-        "accessCode",
-        code
-    );
+    try {
+
+        const response = await fetch(
+            `/api/code/${encodeURIComponent(code)}`
+        );
+
+        const data = await getResponseData(response);
+
+        if (!response.ok || !data.success) {
+            throw new Error(
+                data.message || "Code not found."
+            );
+        }
+
+        // Show received content
+        receivedContent.textContent =
+            data.content;
+
+        resultSection.classList.remove(
+            "hidden"
+        );
+
+        accessBtn.disabled = false;
+        accessBtn.textContent =
+            "Access Content";
+
+        showMessage(
+            "Content received successfully.",
+            "success"
+        );
+
+    } catch (error) {
+
+        console.error("Access error:", error);
+
+        accessBtn.disabled = false;
+        accessBtn.textContent =
+            "Access Content";
+
+        resultSection.classList.add(
+            "hidden"
+        );
+
+        showMessage(
+            error.message || "Unable to access code.",
+            "error"
+        );
+    }
 });
 
 
 // =========================
-// CONTENT RECEIVED
-// =========================
-
-socket.on("contentReceived", (content) => {
-
-    receivedContent.textContent =
-        content;
-
-    resultSection.classList.remove(
-        "hidden"
-    );
-
-    accessBtn.disabled = false;
-    accessBtn.textContent =
-        "Access Content";
-
-    showMessage(
-        "Content received successfully.",
-        "success"
-    );
-});
-
-
-// =========================
-// COPY CONTENT
+// COPY RECEIVED CONTENT
 // =========================
 
 copyReceivedBtn.addEventListener(
@@ -263,6 +298,16 @@ copyReceivedBtn.addEventListener(
 
         const content =
             receivedContent.textContent;
+
+        if (!content) {
+
+            showMessage(
+                "There is no content to copy.",
+                "error"
+            );
+
+            return;
+        }
 
         try {
 
@@ -280,7 +325,12 @@ copyReceivedBtn.addEventListener(
 
             }, 1500);
 
-        } catch {
+        } catch (error) {
+
+            console.error(
+                "Copy content error:",
+                error
+            );
 
             showMessage(
                 "Unable to copy content.",
@@ -308,11 +358,6 @@ clearResultBtn.addEventListener(
         codeInput.value = "";
 
         codeInput.focus();
-
-        showMessage(
-            "Content cleared.",
-            "success"
-        );
     }
 );
 
@@ -325,10 +370,13 @@ codeInput.addEventListener(
     "input",
     () => {
 
-        // Remove spaces
+        // Accept only values that could be generated by QuickCode.
         codeInput.value =
-            codeInput.value.replace(/\s/g, "");
+            codeInput.value.replace(/[^A-Za-z0-9]/g, "");
 
+        // Keep maximum 6 characters
+        codeInput.value =
+            codeInput.value.substring(0, 6);
     }
 );
 
@@ -342,30 +390,7 @@ codeInput.addEventListener(
     (event) => {
 
         if (event.key === "Enter") {
-
             accessBtn.click();
-
         }
     }
 );
-
-
-// =========================
-// ERRORS
-// =========================
-
-socket.on("errorMessage", (error) => {
-
-    generateBtn.disabled = false;
-    generateBtn.textContent =
-        "Generate Code";
-
-    accessBtn.disabled = false;
-    accessBtn.textContent =
-        "Access Content";
-
-    showMessage(
-        error,
-        "error"
-    );
-});
